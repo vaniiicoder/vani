@@ -3,59 +3,84 @@ import requests
 import base
 
 bot = telebot.TeleBot(base.TOKEN)
-
 OMDB_API_KEY = base.OMDB_API_KEY
 
 print("Bot started...")
 
-# State management: track what the user is searching for
+# Track user state: what command they used last
 user_state = {}
 
 
-def search_movie(query, media_type="movie"):
-    """Search OMDb API for a movie or series"""
-    url = f"http://www.omdbapi.com/?t={query}&type={media_type}&apikey={OMDB_API_KEY}"
+def get_movie_by_id(imdb_id):
+    """Search OMDb by IMDb ID (e.g. tt0110912)"""
+    url = f"http://www.omdbapi.com/?i={imdb_id}&apikey={OMDB_API_KEY}"
     response = requests.get(url)
-    data = response.json()
-    return data
+    return response.json()
+
+
+def get_movie_by_name(name, media_type="movie"):
+    """Search OMDb by title"""
+    url = f"http://www.omdbapi.com/?t={name}&type={media_type}&apikey={OMDB_API_KEY}"
+    response = requests.get(url)
+    return response.json()
 
 
 def format_movie_info(data):
-    """Format movie/series info into a nice message"""
+    """Format OMDb result into a readable message"""
     if data.get("Response") == "False":
-        return "❌ متأسفانه چیزی پیدا نشد. لطفاً نام دیگه‌ای امتحان کن."
+        return "❌ متأسفانه چیزی پیدا نشد. لطفاً دوباره امتحان کن."
 
-    title = data.get("Title", "-")
-    year = data.get("Year", "-")
-    genre = data.get("Genre", "-")
-    imdb = data.get("imdbRating", "-")
-    plot = data.get("Plot", "-")
+    title    = data.get("Title", "-")
+    year     = data.get("Year", "-")
+    genre    = data.get("Genre", "-")
+    imdb_r   = data.get("imdbRating", "-")
+    imdb_id  = data.get("imdbID", "-")
+    plot     = data.get("Plot", "-")
     director = data.get("Director", "-")
-    actors = data.get("Actors", "-")
-    runtime = data.get("Runtime", "-")
+    actors   = data.get("Actors", "-")
+    runtime  = data.get("Runtime", "-")
     language = data.get("Language", "-")
+    mtype    = data.get("Type", "-")
 
-    text = f"""
+    return f"""
 🎬 *{title}* ({year})
 
+🆔 IMDb ID: `{imdb_id}`
+🎭 نوع: {mtype}
 ⏱ مدت زمان: {runtime}
-🎭 ژانر: {genre}
+🎞 ژانر: {genre}
 🌍 زبان: {language}
 🎥 کارگردان: {director}
 👥 بازیگران: {actors}
-⭐ امتیاز IMDb: {imdb}
+⭐ امتیاز IMDb: {imdb_r}
 
 📖 داستان:
 {plot}
 """
-    return text
 
+
+def send_result(chat_id, data):
+    """Send poster + info or just info"""
+    info = format_movie_info(data)
+    poster = data.get("Poster")
+    if poster and poster != "N/A":
+        bot.send_photo(chat_id, poster, caption=info, parse_mode="Markdown")
+    else:
+        bot.send_message(chat_id, info, parse_mode="Markdown")
+
+
+# ───────────────────────── Commands ─────────────────────────
 
 @bot.message_handler(commands=['start'])
 def start_bot(message):
     bot.send_message(
         message.chat.id,
-        "🍿سلام! به بات معرفی فیلم و سریال خوش اومدی."
+        "🍿 سلام! به بات معرفی فیلم و سریال خوش اومدی.\n\n"
+        "دستورهای موجود:\n"
+        "/menu — منوی اصلی\n"
+        "/moviename — جستجو با نام فیلم\n"
+        "/movieid — جستجو با آی‌دی IMDb\n"
+        "/help — راهنما"
     )
 
 
@@ -63,24 +88,39 @@ def start_bot(message):
 def help_user(message):
     bot.reply_to(
         message,
-        "📌برای استفاده از امکانات ربات از منوی اصلی کمک بگیر."
+        "📌 دستورهای ربات:\n\n"
+        "/moviename — نام فیلم یا سریال را وارد کن\n"
+        "/movieid — آی‌دی IMDb را وارد کن (مثلاً tt0110912)\n"
+        "/menu — منوی اصلی\n"
+    )
+
+
+@bot.message_handler(commands=['moviename'])
+def ask_movie_name(message):
+    user_state[message.chat.id] = 'moviename'
+    bot.send_message(message.chat.id, "🎬 نام فیلم یا سریال موردنظر را بنویس:")
+
+
+@bot.message_handler(commands=['movieid'])
+def ask_movie_id(message):
+    user_state[message.chat.id] = 'movieid'
+    bot.send_message(
+        message.chat.id,
+        "🆔 آی‌دی IMDb فیلم را وارد کن:\n"
+        "_(مثلاً: tt0110912)_",
+        parse_mode="Markdown"
     )
 
 
 @bot.message_handler(commands=['menu'])
 def show_menu(message):
-    markup = telebot.types.ReplyKeyboardMarkup()
-
-    btn1 = telebot.types.KeyboardButton("🎬جستجوی فیلم")
-    btn2 = telebot.types.KeyboardButton("📺جستجوی سریال")
-    btn3 = telebot.types.KeyboardButton("⭐فیلم‌های برتر")
-    btn4 = telebot.types.KeyboardButton("🔥سریال‌های محبوب")
-    btn5 = telebot.types.KeyboardButton("📞تماس با ما")
-    btn6 = telebot.types.KeyboardButton("ℹ️درباره ما")
-
-    markup.add(btn1, btn2)
-    markup.add(btn3, btn4)
-    markup.add(btn5, btn6)
+    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(telebot.types.KeyboardButton("🎬جستجوی فیلم"),
+               telebot.types.KeyboardButton("📺جستجوی سریال"))
+    markup.add(telebot.types.KeyboardButton("⭐فیلم‌های برتر"),
+               telebot.types.KeyboardButton("🔥سریال‌های محبوب"))
+    markup.add(telebot.types.KeyboardButton("📞تماس با ما"),
+               telebot.types.KeyboardButton("ℹ️درباره ما"))
 
     bot.send_message(
         message.chat.id,
@@ -89,77 +129,61 @@ def show_menu(message):
     )
 
 
+# ───────────────────────── Text handler ─────────────────────────
+
 @bot.message_handler(func=lambda message: True)
 def user_actions(message):
     chat_id = message.chat.id
+    text = message.text
 
-    # ---- If user is in search mode ----
+    # Handle pending state from /moviename or /movieid
     if chat_id in user_state:
-        media_type = user_state.pop(chat_id)
-        bot.send_message(chat_id, "🔍 در حال جستجو...")
-        data = search_movie(message.text, media_type)
-        info = format_movie_info(data)
+        state = user_state.pop(chat_id)
 
-        # Send poster if available
-        poster = data.get("Poster")
-        if poster and poster != "N/A":
-            bot.send_photo(chat_id, poster, caption=info, parse_mode="Markdown")
-        else:
-            bot.send_message(chat_id, info, parse_mode="Markdown")
+        if state == 'moviename':
+            bot.send_message(chat_id, "🔍 در حال جستجو...")
+            data = get_movie_by_name(text)
+            send_result(chat_id, data)
+
+        elif state == 'movieid':
+            bot.send_message(chat_id, "🔍 در حال جستجو...")
+            # Accept with or without 'tt' prefix
+            imdb_id = text.strip()
+            if imdb_id.isdigit():
+                imdb_id = "tt" + imdb_id.zfill(7)
+            data = get_movie_by_id(imdb_id)
+            send_result(chat_id, data)
         return
 
-    # ---- Menu buttons ----
-    if message.text == "📞تماس با ما":
-        email = "support@movies.com"
-        phone = "09999632589"
-        text = f"""
-📬راه‌های ارتباطی
+    # Menu keyboard buttons
+    if text == "📞تماس با ما":
+        bot.send_message(chat_id,
+            "📬 راه‌های ارتباطی\n\n📧 ایمیل: support@movies.com\n📱 تلفن: 09999632589")
 
-📧ایمیل: {email}
+    elif text == "ℹ️درباره ما":
+        bot.send_message(chat_id,
+            "🎞 این ربات برای معرفی فیلم‌ها و سریال‌ها طراحی شده است.\n\n"
+            "🔎 جستجو\n⭐ لیست‌های پیشنهادی\n📚 دسترسی سریع به اطلاعات")
 
-📱تلفن: {phone}
-"""
-        bot.send_message(chat_id, text)
+    elif text == "🎬جستجوی فیلم":
+        user_state[chat_id] = 'moviename'
+        bot.send_message(chat_id, "🎥 لطفاً نام فیلم موردنظر را وارد کن.")
 
-    elif message.text == "ℹ️درباره ما":
-        text = """
-🎞 این ربات برای معرفی فیلم‌ها و سریال‌ها طراحی شده است.
+    elif text == "📺جستجوی سریال":
+        user_state[chat_id] = 'moviename'
+        bot.send_message(chat_id, "📺 نام سریال موردنظر را وارد کنید.")
 
-🔎جستجو
-⭐لیست‌های پیشنهادی
-📚دسترسی سریع به اطلاعات مختلف
-"""
-        bot.send_message(chat_id, text)
+    elif text == "⭐فیلم‌های برتر":
+        bot.send_message(chat_id,
+            "🏆 فهرست فیلم‌های پیشنهادی:\n\n"
+            "1. The Godfather\n2. Pulp Fiction\n3. The Lord of the Rings\n"
+            "4. Seven\n5. Interstellar")
 
-    elif message.text == "🎬جستجوی فیلم":
-        user_state[chat_id] = "movie"
-        bot.send_message(chat_id, "🎥لطفاً نام فیلم موردنظر را وارد کن.")
-
-    elif message.text == "📺جستجوی سریال":
-        user_state[chat_id] = "series"
-        bot.send_message(chat_id, "📺نام سریال موردنظر را وارد کنید.")
-
-    elif message.text == "⭐فیلم‌های برتر":
-        bot.send_message(chat_id, """
-🏆فهرست فیلم‌های پیشنهادی:
-
-1. The Godfather
-2. Pulp Fiction
-3. The Lord of the Rings
-4. Seven
-5. Interstellar
-""")
-
-    elif message.text == "🔥سریال‌های محبوب":
-        bot.send_message(chat_id, """
-🌟 فهرست سریال‌های محبوب:
-
-1. Money Heist
-2. The Last of Us
-3. Wednesday
-4. The Boys
-5. Sherlock
-""")
+    elif text == "🔥سریال‌های محبوب":
+        bot.send_message(chat_id,
+            "🌟 فهرست سریال‌های محبوب:\n\n"
+            "1. Money Heist\n2. The Last of Us\n3. Wednesday\n"
+            "4. The Boys\n5. Sherlock")
 
 
 if __name__ == "__main__":
