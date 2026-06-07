@@ -115,8 +115,7 @@ def ask_movie_id(message):
 @bot.message_handler(commands=['menu'])
 def show_menu(message):
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add(telebot.types.KeyboardButton("🎬جستجوی فیلم"),
-               telebot.types.KeyboardButton("📺جستجوی سریال"))
+    markup.add(telebot.types.KeyboardButton("🎬جستجوی فیلم"))
     markup.add(telebot.types.KeyboardButton("⭐فیلم‌های برتر"),
                telebot.types.KeyboardButton("🔥سریال‌های محبوب"))
     markup.add(telebot.types.KeyboardButton("📞تماس با ما"),
@@ -168,10 +167,6 @@ def user_actions(message):
     elif text == "🎬جستجوی فیلم":
         user_state[chat_id] = 'moviename'
         bot.send_message(chat_id, "🎥 لطفاً نام فیلم موردنظر را وارد کن.")
-
-    elif text == "📺جستجوی سریال":
-        user_state[chat_id] = 'moviename'
-        bot.send_message(chat_id, "📺 نام سریال موردنظر را وارد کنید.")
 
     elif text == "⭐فیلم‌های برتر":
         bot.send_message(chat_id,
